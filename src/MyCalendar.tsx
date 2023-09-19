@@ -11,18 +11,22 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 import { startOfDay, endOfDay } from "date-fns";
 import EventForm from "./components/EventForm";
 import CustomToolbar from './components/CustomToolbar';
+import { serverData } from "./state/serverData";
+import ko from "date-fns/locale/ko";
+import { EventModal } from "./components/EventModal";
 
 
-const locales = {
-  "en-US": require("date-fns/locale/en-US"),
-};
 
-const localizer: DateLocalizer = dateFnsLocalizer({
+const localizer = dateFnsLocalizer({
   format,
   startOfWeek,
   getDay,
-  locales,
+  locales: {
+    'ko': ko,  
+    'en-US': require('date-fns/locale/en-US'),
+  }
 });
+
 
 interface Event {
   title: string;
@@ -34,29 +38,69 @@ interface Event {
 
 const getRandomColor = () => {
   const colors = [
-    "#F44336", // 빨강
-    "#E91E63", // 분홍
-    "#9C27B0", // 자주
-    "#673AB7", // 진한 자주
-    "#3F51B5", // 남색
-    "#2196F3", // 파랑
-    "#4CAF50", // 초록
-    "#FFC107", // 황록
-    "#FF5722", // 진한 주황
+    "#F44336", 
+    "#E91E63", 
+    "#9C27B0", 
+    "#673AB7", 
+    "#3F51B5", 
+    "#2196F3", 
+    "#4CAF50", 
+    "#FFC107", 
+    "#FF5722", 
   ];
 
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
-const MyCalendar: React.FC = () => {
-  const [events, setEvents] = useState<Event[]>([]);
+// 서버 데이터를 Event 형식에 맞게 변환
+const convertServerDataToEvents = (serverData: any[]) => {
+  const events: Event[] = serverData.map((data) => {
+    let start: Date;
+    let end: Date;
 
-  const handleEventSelect = (event: Event) => {
-    if (window.confirm("정말로 이 이벤트를 삭제하시겠습니까?")) {
-      setEvents(events.filter((e) => e !== event));
+    // Handle different date formats
+    if (data.date.includes("~")) {
+      const [startStr, endStr] = data.date.split("~").map((s: string) => s.trim());
+      start = new Date(new Date().getFullYear(), parseInt(data.month) - 1, parseInt(startStr.split(".")[0]));
+      end = new Date(new Date().getFullYear(), parseInt(data.month) - 1, parseInt(endStr.split(".")[0]));
+    } else if (data.date.includes("-")) {
+      const [startStr, endStr] = data.date.split("-").map((s: string) => s.trim());
+      start = new Date(new Date().getFullYear(), parseInt(startStr.split(".")[0]) - 1, parseInt(startStr.split(".")[1]));
+      end = new Date(new Date().getFullYear(), parseInt(endStr.split(".")[0]) - 1, parseInt(endStr.split(".")[1]));
+    } else {
+      start = new Date(new Date().getFullYear(), parseInt(data.month) - 1, parseInt(data.date.split(".")[0]));
+      end = start;
     }
-  };
 
+    return {
+      title: data.event,
+      start: startOfDay(start),
+      end: endOfDay(end),
+      allDay: true,
+      color: getRandomColor(),
+    };
+  });
+
+  return events;
+};
+
+
+// 사용 예시
+const initialEvents = convertServerDataToEvents(serverData);
+
+const MyCalendar: React.FC = () => {
+  const [events, setEvents] = useState<Event[]>(initialEvents);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedEvents, setSelectedEvents] = useState<Event[]>([]);
+
+  const handleEventSelect = (event: Event, e: any) => {
+    // 여기에서는 클릭한 이벤트와 같은 날짜에 있는 이벤트를 찾습니다.
+    const sameDayEvents = events.filter((evt) => {
+      return evt.start.toDateString() === event.start.toDateString();
+    });
+    setSelectedEvents(sameDayEvents);
+    setShowModal(true);
+  };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -84,6 +128,7 @@ const MyCalendar: React.FC = () => {
       <div style={{ height: "500px", marginBottom: "1rem" }}>
         <Calendar
           localizer={localizer}
+          culture='ko'
           events={events}
           views={["month", "agenda"]}
           defaultView="month"
@@ -96,6 +141,12 @@ const MyCalendar: React.FC = () => {
           eventPropGetter={eventStyleGetter}
         />
       </div>
+      {showModal && (
+        <EventModal
+          events={selectedEvents}
+          onClose={() => setShowModal(false)}
+        />
+      )}
       <div style={{ textAlign: "center", marginBottom: "1rem" }}>
         <EventForm onSubmit={handleSubmit} />
       </div>
